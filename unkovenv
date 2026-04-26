@@ -1,0 +1,602 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROG="unkovenv"
+STORE=""
+DRY_RUN=0
+VERBOSE=0
+JSON=0
+PARSED_ARGS=()
+
+SCANNED=0
+DEDUPED=0
+NEW_BLOBS=0
+SKIPPED=0
+SAVED_BYTES=0
+
+LOCK_HELD=0
+
+resolve_store_path() {
+  if [[ -n "${UNKOENV_STORE:-}" ]]; then
+    echo "$UNKOENV_STORE"
+    return 0
+  fi
+
+  if [[ -n "${UNKOENV_STORE_DIR:-}" ]]; then
+    echo "$UNKOENV_STORE_DIR"
+    return 0
+  fi
+
+  echo "$HOME/.cache/unkoenv"
+}
+
+init_store() {
+  STORE="$(resolve_store_path)"
+  if [[ -z "$STORE" ]]; then
+    die 1 "store path must not be empty"
+  fi
+}
+
+log() {
+  local level="$1"
+  shift
+  if [[ "$level" == "INFO" && "$VERBOSE" -ne 1 ]]; then
+    return
+  fi
+  echo "[$level] $*"
+}
+
+die() {
+  local code="$1"
+  shift
+  echo "[ERROR] $*" >&2
+  exit "$code"
+}
+
+run_or_echo() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log INFO "dry_run cmd=$*"
+    return 0
+  fi
+  "$@"
+}
+
+sha256_of_file() {
+  local file="$1"
+  local hash=""
+
+  if command -v shasum >/dev/null 2>&1; then
+    hash="$(shasum -a 256 "$file" 2>/dev/null | awk '{print $1}' || true)"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    hash="$(sha256sum "$file" 2>/dev/null | awk '{print $1}' || true)"
+  elif command -v openssl >/dev/null 2>&1; then
+    hash="$(openssl dgst -sha256 "$file" 2>/dev/null | sed -E 's/^.*= *([0-9A-Fa-f]{64})$/\1/' || true)"
+  else
+    die 1 "no sha256 tool available (shasum/sha256sum/openssl)"
+  fi
+
+  hash="$(echo "$hash" | tr '[:upper:]' '[:lower:]')"
+  if [[ ! "$hash" =~ ^[0-9a-f]{64}$ ]]; then
+    return 1
+  fi
+  echo "$hash"
+}
+
+stat_size() {
+  local file="$1"
+  stat -f "%z" "$file"
+}
+
+stat_dev_inode() {
+  local file="$1"
+  stat -f "%d:%i" "$file"
+}
+
+ensure_store_dirs() {
+  run_or_echo mkdir -p "$STORE/venvs" "$STORE/blobs" "$STORE/lock"
+}
+
+cleanup_lock() {
+  if [[ "$LOCK_HELD" -eq 1 ]]; then
+    rm -f "$STORE/lock/unkoenv.lock"
+    LOCK_HELD=0
+  fi
+}
+
+acquire_lock() {
+  local lock_file="$STORE/lock/unkoenv.lock"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log INFO "dry_run lock path=$lock_file"
+    return 0
+  fi
+
+  if ! (set -o noclobber; : > "$lock_file") 2>/dev/null; then
+    local lock_pid=""
+    if [[ -f "$lock_file" ]]; then
+      lock_pid="$(head -n 1 "$lock_file" 2>/dev/null || true)"
+      if [[ "$lock_pid" =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
+        die 3 "failed to acquire lock: $lock_file"
+      fi
+      log WARN "removing_stale_lock path=$lock_file pid=${lock_pid:-unknown}"
+      rm -f "$lock_file"
+    fi
+
+    if ! (set -o noclobber; : > "$lock_file") 2>/dev/null; then
+      die 3 "failed to acquire lock: $lock_file"
+    fi
+  fi
+
+  LOCK_HELD=1
+  echo "$$" > "$lock_file"
+
+  trap 'cleanup_lock' EXIT INT TERM
+}
+
+create_or_validate_venv_link() {
+  local venv_dir="$1"
+  local alias_name="$2"
+  local link_path="$STORE/venvs/$alias_name"
+  local abs_venv
+  abs_venv="$(cd "$venv_dir" && pwd -P)"
+
+  if [[ -L "$link_path" ]]; then
+    local current_target current_target_resolved
+    current_target="$(readlink "$link_path")"
+
+    current_target_resolved="$current_target"
+    if [[ "$current_target" == /* ]]; then
+      if [[ -d "$current_target" ]]; then
+        current_target_resolved="$(cd "$current_target" && pwd -P)"
+      fi
+    else
+      local rel_target
+      rel_target="$(cd "$(dirname "$link_path")" && pwd -P)/$current_target"
+      if [[ -d "$rel_target" ]]; then
+        current_target_resolved="$(cd "$rel_target" && pwd -P)"
+      fi
+    fi
+
+    if [[ "$current_target_resolved" == "$abs_venv" ]]; then
+      return 0
+    fi
+
+    local abs_parent venv_base
+    venv_base="$(basename "$abs_venv")"
+    if [[ "$venv_base" == ".venv" || "$venv_base" == "venv" ]]; then
+      abs_parent="$(cd "$abs_venv/.." && pwd -P)"
+      if [[ "$current_target_resolved" == "$abs_parent" ]]; then
+        log WARN "migrating_legacy_venv_alias link=$link_path from=$current_target to=$abs_venv"
+        if [[ "$DRY_RUN" -eq 0 ]]; then
+          rm -f "$link_path"
+          ln -s "$abs_venv" "$link_path"
+        fi
+        return 0
+      fi
+    fi
+
+    die 1 "venv alias conflict: $link_path -> $current_target (requested: $abs_venv)"
+  fi
+
+  if [[ -e "$link_path" ]]; then
+    die 1 "path exists and is not symlink: $link_path"
+  fi
+
+  run_or_echo ln -s "$abs_venv" "$link_path"
+}
+
+collect_site_packages() {
+  local venv_dir="$1"
+  local out_file="$2"
+  if [[ ! -d "$venv_dir" ]]; then
+    die 2 "venv_dir not found: $venv_dir"
+  fi
+
+  find "$venv_dir/lib" -type d -path "*/python*/site-packages" -print 2>/dev/null > "$out_file" || true
+  if [[ ! -s "$out_file" ]]; then
+    die 2 "site-packages not found under: $venv_dir"
+  fi
+}
+
+has_site_packages() {
+  local venv_dir="$1"
+  local one
+
+  if [[ ! -d "$venv_dir/lib" ]]; then
+    return 1
+  fi
+
+  one="$(find "$venv_dir/lib" -type d -path "*/python*/site-packages" -print -quit 2>/dev/null || true)"
+  [[ -n "$one" ]]
+}
+
+resolve_venv_dir() {
+  local input_dir="$1"
+
+  if [[ ! -d "$input_dir" ]]; then
+    die 2 "venv_dir not found: $input_dir"
+  fi
+
+  if has_site_packages "$input_dir"; then
+    echo "$input_dir"
+    return 0
+  fi
+
+  if [[ -d "$input_dir/.venv" ]] && has_site_packages "$input_dir/.venv"; then
+    echo "$input_dir/.venv"
+    return 0
+  fi
+
+  if [[ -d "$input_dir/venv" ]] && has_site_packages "$input_dir/venv"; then
+    echo "$input_dir/venv"
+    return 0
+  fi
+
+  die 2 "site-packages not found under: $input_dir"
+}
+
+is_cross_device_error() {
+  local err_file="$1"
+  grep -qiE "cross-device link|invalid cross-device link" "$err_file"
+}
+
+process_one_file() {
+  local file="$1"
+  local hash
+  local size
+  local blob_dir
+  local blob_path
+  local existed=0
+
+  SCANNED=$((SCANNED + 1))
+
+  if ! hash="$(sha256_of_file "$file")"; then
+    SKIPPED=$((SKIPPED + 1))
+    log WARN "skipped file=$file reason=hash_failed"
+    return 0
+  fi
+
+  size="$(stat_size "$file")"
+  blob_dir="$STORE/blobs/${hash:0:2}"
+  blob_path="$blob_dir/$hash"
+
+  if [[ -e "$blob_path" ]]; then
+    existed=1
+  fi
+
+  run_or_echo mkdir -p "$blob_dir"
+  if [[ ! -e "$blob_path" ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      NEW_BLOBS=$((NEW_BLOBS + 1))
+      log INFO "would_create_blob file=$file blob=$blob_path hash=$hash"
+    else
+      local errf
+      errf="$(mktemp)"
+      if ! ln "$file" "$blob_path" 2>"$errf"; then
+        if is_cross_device_error "$errf"; then
+          rm -f "$errf"
+          die 4 "cross-device link while creating blob: $file -> $blob_path"
+        fi
+        local errmsg
+        errmsg="$(cat "$errf")"
+        rm -f "$errf"
+        die 1 "failed to create blob link: $errmsg"
+      fi
+      rm -f "$errf"
+      NEW_BLOBS=$((NEW_BLOBS + 1))
+      log INFO "created_blob file=$file blob=$blob_path hash=$hash"
+    fi
+  fi
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    if [[ "$existed" -eq 1 ]]; then
+      DEDUPED=$((DEDUPED + 1))
+      SAVED_BYTES=$((SAVED_BYTES + size))
+      log INFO "would_link file=$file blob=$blob_path hash=$hash"
+    fi
+    return 0
+  fi
+
+  local src_id blob_id
+  src_id="$(stat_dev_inode "$file")"
+  blob_id="$(stat_dev_inode "$blob_path")"
+  if [[ "$src_id" == "$blob_id" ]]; then
+    return 0
+  fi
+
+  local tmp_link
+  tmp_link="${file}.unkovenv-tmp.$$"
+
+  local errf2
+  errf2="$(mktemp)"
+  if ! ln "$blob_path" "$tmp_link" 2>"$errf2"; then
+    if is_cross_device_error "$errf2"; then
+      rm -f "$errf2"
+      rm -f "$tmp_link" 2>/dev/null || true
+      die 4 "cross-device link while replacing file: $blob_path -> $file"
+    fi
+    local errmsg2
+    errmsg2="$(cat "$errf2")"
+    rm -f "$errf2"
+    rm -f "$tmp_link" 2>/dev/null || true
+    die 1 "failed to create temp link: $errmsg2"
+  fi
+  rm -f "$errf2"
+
+  if ! mv -f "$tmp_link" "$file"; then
+    rm -f "$tmp_link" 2>/dev/null || true
+    die 1 "failed to replace file atomically: $file"
+  fi
+
+  local after_id
+  after_id="$(stat_dev_inode "$file")"
+  if [[ "$after_id" != "$blob_id" ]]; then
+    die 1 "inode verification failed after replace: $file"
+  fi
+
+  DEDUPED=$((DEDUPED + 1))
+  if [[ "$existed" -eq 1 ]]; then
+    SAVED_BYTES=$((SAVED_BYTES + size))
+  fi
+  log INFO "linked file=$file blob=$blob_path hash=$hash"
+}
+
+cmd_add() {
+  local input_dir="$1"
+  local venv_dir
+  ensure_store_dirs
+  acquire_lock
+
+  venv_dir="$(resolve_venv_dir "$input_dir")"
+
+  local alias_name
+  alias_name="$(basename "$input_dir")"
+
+  local sp_list
+  sp_list="$(mktemp)"
+  collect_site_packages "$venv_dir" "$sp_list"
+
+  create_or_validate_venv_link "$venv_dir" "$alias_name"
+
+  log INFO "scan_start venv=$(cd "$venv_dir" && pwd -P)"
+
+  while IFS= read -r sp; do
+    while IFS= read -r -d '' file; do
+      process_one_file "$file"
+    done < <(
+      find "$sp" -type f \
+        ! -path "*/__pycache__/*" \
+        ! -name "*.pyc" \
+        -print0
+    )
+  done < "$sp_list"
+
+  rm -f "$sp_list"
+  echo "[INFO] done scanned=$SCANNED deduped=$DEDUPED new_blobs=$NEW_BLOBS saved_bytes=$SAVED_BYTES skipped=$SKIPPED"
+}
+
+remove_broken_venv_links() {
+  local removed=0
+  local path
+
+  if [[ ! -d "$STORE/venvs" ]]; then
+    echo "$removed"
+    return 0
+  fi
+
+  while IFS= read -r -d '' path; do
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      log INFO "would_remove_broken_venv_link path=$path"
+    else
+      rm -f "$path"
+    fi
+    removed=$((removed + 1))
+  done < <(find -H "$STORE/venvs" -mindepth 1 -maxdepth 1 -type l ! -exec test -e {} \; -print0)
+
+  echo "$removed"
+}
+
+remove_orphan_blobs() {
+  local removed=0
+  local blob
+
+  if [[ ! -d "$STORE/blobs" ]]; then
+    echo "$removed"
+    return 0
+  fi
+
+  while IFS= read -r -d '' blob; do
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      log INFO "would_remove_orphan_blob path=$blob"
+    else
+      rm -f "$blob"
+    fi
+    removed=$((removed + 1))
+  done < <(find "$STORE/blobs" -type f -links 1 -print0)
+
+  echo "$removed"
+}
+
+remove_empty_blob_dirs() {
+  local removed=0
+  local dir
+
+  if [[ ! -d "$STORE/blobs" ]]; then
+    echo "$removed"
+    return 0
+  fi
+
+  while IFS= read -r -d '' dir; do
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      log INFO "would_remove_empty_dir path=$dir"
+    else
+      rmdir "$dir" 2>/dev/null || true
+    fi
+    removed=$((removed + 1))
+  done < <(find "$STORE/blobs" -depth -type d -empty -print0)
+
+  echo "$removed"
+}
+
+cmd_gc() {
+  ensure_store_dirs
+  acquire_lock
+
+  local removed_broken removed_orphan removed_empty
+  removed_broken="$(remove_broken_venv_links)"
+  removed_orphan="$(remove_orphan_blobs)"
+  removed_empty="$(remove_empty_blob_dirs)"
+
+  echo "[INFO] gc_removed_broken_links count=$removed_broken"
+  echo "[INFO] gc_removed_orphan count=$removed_orphan"
+  echo "[INFO] gc_removed_empty_dirs count=$removed_empty"
+}
+
+count_managed_venvs() {
+  if [[ ! -d "$STORE/venvs" ]]; then
+    echo 0
+    return
+  fi
+  find "$STORE/venvs" -mindepth 1 -maxdepth 1 -type l | wc -l | awk '{print $1}'
+}
+
+count_broken_links() {
+  if [[ ! -d "$STORE/venvs" ]]; then
+    echo 0
+    return
+  fi
+  find -H "$STORE/venvs" -mindepth 1 -maxdepth 1 -type l ! -exec test -e {} \; | wc -l | awk '{print $1}'
+}
+
+count_blob_files() {
+  if [[ ! -d "$STORE/blobs" ]]; then
+    echo 0
+    return
+  fi
+  find "$STORE/blobs" -type f | wc -l | awk '{print $1}'
+}
+
+estimate_saved_bytes() {
+  local total=0
+  local f
+  if [[ ! -d "$STORE/blobs" ]]; then
+    echo 0
+    return
+  fi
+
+  while IFS= read -r -d '' f; do
+    local links size extra
+    links="$(stat -f "%l" "$f")"
+    size="$(stat_size "$f")"
+    if [[ "$links" -gt 1 ]]; then
+      extra=$((links - 1))
+      total=$((total + extra * size))
+    fi
+  done < <(find "$STORE/blobs" -type f -print0)
+
+  echo "$total"
+}
+
+cmd_status() {
+  ensure_store_dirs
+  local venv_count blob_count broken_count saved_est
+  venv_count="$(count_managed_venvs)"
+  blob_count="$(count_blob_files)"
+  broken_count="$(count_broken_links)"
+  saved_est="$(estimate_saved_bytes)"
+
+  if [[ "$JSON" -eq 1 ]]; then
+    cat <<EOF
+{"store":"$STORE","venv_count":$venv_count,"blob_count":$blob_count,"estimated_saved_bytes":$saved_est,"broken_link_count":$broken_count}
+EOF
+    return 0
+  fi
+
+  echo "[INFO] status store=$STORE venv_count=$venv_count blob_count=$blob_count estimated_saved_bytes=$saved_est broken_link_count=$broken_count"
+}
+
+usage() {
+  local default_store
+  default_store="$(resolve_store_path)"
+  cat <<EOF
+Usage:
+  $PROG add <venv_dir> [--dry-run] [--verbose]
+  $PROG gc [--dry-run] [--verbose]
+  $PROG status [--json]
+
+Env:
+  UNKOENV_STORE       override store path (highest priority)
+  UNKOENV_STORE_DIR   override store path (fallback)
+  default store: $default_store
+EOF
+}
+
+parse_common_flags() {
+  PARSED_ARGS=()
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      --verbose)
+        VERBOSE=1
+        shift
+        ;;
+      --json)
+        JSON=1
+        shift
+        ;;
+      *)
+        PARSED_ARGS+=("$1")
+        shift
+        ;;
+    esac
+  done
+}
+
+main() {
+  init_store
+
+  if [[ "$#" -lt 1 ]]; then
+    usage
+    exit 1
+  fi
+
+  local cmd="$1"
+  shift
+
+  parse_common_flags "$@"
+
+  case "$cmd" in
+    add)
+      if [[ "${#PARSED_ARGS[@]}" -ne 1 ]]; then
+        usage
+        exit 1
+      fi
+      cmd_add "${PARSED_ARGS[0]}"
+      ;;
+    gc)
+      if [[ "${#PARSED_ARGS[@]}" -ne 0 ]]; then
+        usage
+        exit 1
+      fi
+      cmd_gc
+      ;;
+    status)
+      if [[ "${#PARSED_ARGS[@]}" -ne 0 ]]; then
+        usage
+        exit 1
+      fi
+      cmd_status
+      ;;
+    -h|--help|help)
+      usage
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
