@@ -14,19 +14,19 @@ run_category_08_replace_integrity() {
     printf 'same-content\n' > "$f1"
     printf 'same-content\n' > "$f2"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv1"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv1"
     assert_eq "0" "$status" "first add should succeed"
 
     local first_inode second_inode
     first_inode="$(stat -f "%d:%i" "$f1")"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv1"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv1"
     assert_eq "0" "$status" "second add on same venv should succeed"
 
     second_inode="$(stat -f "%d:%i" "$f1")"
     assert_eq "$first_inode" "$second_inode" "idempotent add should keep same inode"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add --dry-run "$venv2"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add --dry-run "$venv2"
     assert_eq "0" "$status" "dry-run add should succeed"
     assert_not_same_inode "$f1" "$f2" "dry-run must not replace target file"
   }

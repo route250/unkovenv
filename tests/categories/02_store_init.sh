@@ -9,20 +9,20 @@ run_category_02_store_init() {
     mkvenv_like "$venv" "3.12"
     printf 'x\n' > "$venv/lib/python3.12/site-packages/pkg/a.txt"
 
-    run_cmd_capture out status env UNKOENV_STORE_DIR="$store_a" "$SCRIPT" add "$venv"
-    assert_eq "0" "$status" "add with UNKOENV_STORE_DIR should succeed"
+    run_cmd_capture out status env UNKOVENV_STORE_DIR="$store_a" "$SCRIPT" add "$venv"
+    assert_eq "0" "$status" "add with UNKOVENV_STORE_DIR should succeed"
     assert_file_exists "$store_a/venvs/venv-a"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store_b" UNKOENV_STORE_DIR="$store_a" "$SCRIPT" status --json
+    run_cmd_capture out status env UNKOVENV_STORE="$store_b" UNKOVENV_STORE_DIR="$store_a" "$SCRIPT" status --json
     assert_eq "0" "$status" "status json should succeed"
-    assert_contains "$out" "\"store\":\"$store_b\"" "UNKOENV_STORE should win over UNKOENV_STORE_DIR"
+    assert_contains "$out" "\"store\":\"$store_b\"" "UNKOVENV_STORE should win over UNKOVENV_STORE_DIR"
   }
 
   t02_default_home_store() {
     local root fake_home expected_store venv out status
     root="$(mk_case_root "02_default_home_store")"
     fake_home="$root/fake-home"
-    expected_store="$fake_home/.cache/unkoenv"
+    expected_store="$fake_home/.cache/unkovenv"
     venv="$root/project/venv-b"
 
     mkdir -p "$fake_home"

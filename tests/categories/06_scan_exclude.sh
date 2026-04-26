@@ -28,7 +28,7 @@ run_category_06_scan_exclude() {
     pyc_before="$(stat -f "%d:%i" "$pyc")"
     pycache_before="$(stat -f "%d:%i" "$pycache_file")"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv"
     assert_eq "0" "$status" "add should succeed"
 
     local pyc_after pycache_after

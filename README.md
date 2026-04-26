@@ -14,7 +14,7 @@ This reduces disk usage when you have many virtual environments with overlapping
 
 Default store path:
 
-- `$HOME/.cache/unkoenv`
+- `$HOME/.cache/unkovenv`
 
 ## Features
 
@@ -52,8 +52,8 @@ Default store path:
 
 Environment variables:
 
-- `UNKOENV_STORE`: override store path (highest priority)
-- `UNKOENV_STORE_DIR`: override store path (fallback)
+- `UNKOVENV_STORE`: override store path (highest priority)
+- `UNKOVENV_STORE_DIR`: override store path (fallback)
 
 ## Exit Codes
 
@@ -72,7 +72,7 @@ Environment variables:
 ## Tests
 
 ```bash
-./tests/test_unkoenv.sh
+./tests/test_unkovenv.sh
 ```
 
 ## License

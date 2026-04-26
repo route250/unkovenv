@@ -9,13 +9,13 @@
 ## 用語
 
 - `venv`: Python仮想環境ディレクトリ（例: `./.venv`）
-- `store`: 共通管理ディレクトリ（既定: `$HOME/.cache/unkoenv`）
+- `store`: 共通管理ディレクトリ（既定: `$HOME/.cache/unkovenv`）
 - `blob`: 実体ファイル（内容ハッシュ名で格納）
 
 ## 管理ディレクトリ構造
 
 ```text
-$HOME/.cache/unkoenv/
+$HOME/.cache/unkovenv/
   venvs/
    foo -> /abs/path/to/foo/.venv
    bar -> /abs/path/to/bar/.venv
@@ -25,7 +25,7 @@ $HOME/.cache/unkoenv/
    ff/
     ff98...ee01
   lock/
-   unkoenv.lock    # 排他制御用
+   unkovenv.lock    # 排他制御用
 ```
 
 仕様:
@@ -67,7 +67,7 @@ unkovenv add <venv_dir> [--dry-run] [--verbose]
   - `venv_dir`が存在しディレクトリであること
   - `site-packages`が1つ以上見つかること
 2. 排他ロック取得
-  - `store/lock/unkoenv.lock`で多重実行を防止
+  - `store/lock/unkovenv.lock`で多重実行を防止
 3. `venvs/<alias>`シンボリックリンクを作成または更新
   - 既存で同一リンク先なら何もしない
   - 既存で異なるリンク先ならエラー（`--force-link`導入時のみ上書き可）

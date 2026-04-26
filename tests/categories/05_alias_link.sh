@@ -8,7 +8,7 @@ run_category_05_alias_link() {
     mkvenv_like "$venv" "3.12"
     printf 'a\n' > "$venv/lib/python3.12/site-packages/pkg/a.txt"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv"
     assert_eq "0" "$status" "add should succeed"
 
     link="$store/venvs/venv-a"
@@ -28,9 +28,9 @@ run_category_05_alias_link() {
     mkvenv_like "$venv" "3.12"
     printf 'b\n' > "$venv/lib/python3.12/site-packages/pkg/b.txt"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv"
     assert_eq "0" "$status" "first add should succeed"
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv"
     assert_eq "0" "$status" "second add should also succeed"
   }
 
@@ -46,10 +46,10 @@ run_category_05_alias_link() {
     printf 'c\n' > "$venv1/lib/python3.12/site-packages/pkg/c.txt"
     printf 'd\n' > "$venv2/lib/python3.12/site-packages/pkg/d.txt"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv1"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv1"
     assert_eq "0" "$status" "first add should succeed"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv2"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv2"
     assert_eq "1" "$status" "alias conflict should fail with exit 1"
     assert_contains "$out" "venv alias conflict" "should show alias conflict"
 
@@ -62,7 +62,7 @@ run_category_05_alias_link() {
     mkdir -p "$store2/venvs"
     printf 'not-link\n' > "$store2/venvs/venv-x"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store2" "$SCRIPT" add "$venv3"
+    run_cmd_capture out status env UNKOVENV_STORE="$store2" "$SCRIPT" add "$venv3"
     assert_eq "1" "$status" "existing non-symlink alias should fail"
     assert_contains "$out" "path exists and is not symlink" "should show non-symlink alias error"
   }
@@ -80,7 +80,7 @@ run_category_05_alias_link() {
     mkdir -p "$store/venvs"
     ln -s "$project" "$store/venvs/VoiceBotKit"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$project"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$project"
     assert_eq "0" "$status" "legacy project-root alias should be migrated"
 
     link="$store/venvs/VoiceBotKit"

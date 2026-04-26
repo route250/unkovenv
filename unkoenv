@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Backward compatibility shim. Prefer calling `unkovenv` directly.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-exec "$SCRIPT_DIR/unkovenv" "$@"

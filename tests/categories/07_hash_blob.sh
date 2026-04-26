@@ -14,7 +14,7 @@ run_category_07_hash_blob() {
     printf 'same-content\n' > "$f1"
     printf 'same-content\n' > "$f2"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv1"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv1"
     assert_eq "0" "$status" "first add should succeed"
     assert_contains "$out" "new_blobs=1" "first add should create one blob"
 
@@ -23,7 +23,7 @@ run_category_07_hash_blob() {
     blob_path="$store/blobs/${h1:0:2}/$h1"
     assert_file_exists "$blob_path"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv2"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv2"
     assert_eq "0" "$status" "second add should succeed"
 
     local blob_count

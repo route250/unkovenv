@@ -4,7 +4,7 @@ run_category_03_add_prereq() {
     root="$(mk_case_root "03_missing_venv_dir")"
     store="$root/store"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$root/no-such-venv"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$root/no-such-venv"
     assert_eq "2" "$status" "missing venv_dir should be exit 2"
     assert_contains "$out" "venv_dir not found" "error should mention missing venv path"
   }
@@ -16,7 +16,7 @@ run_category_03_add_prereq() {
     venv="$root/project/.venv"
     mkdir -p "$venv"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv"
     assert_eq "2" "$status" "missing site-packages should be exit 2"
     assert_contains "$out" "site-packages not found" "error should mention site-packages"
   }
@@ -33,7 +33,7 @@ run_category_03_add_prereq() {
 
     (
       cd "$root"
-      run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "プロジェクト with space/venv-a"
+      run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "プロジェクト with space/venv-a"
       assert_eq "0" "$status" "relative path with spaces/unicode should succeed"
     )
 
@@ -51,7 +51,7 @@ run_category_03_add_prereq() {
     f="$venv/lib/python3.12/site-packages/pkg/data.bin"
     printf 'voicebot\n' > "$f"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$project"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$project"
     assert_eq "0" "$status" "project path with .venv should be accepted"
     assert_file_exists "$store/venvs/VoiceBotKit"
 

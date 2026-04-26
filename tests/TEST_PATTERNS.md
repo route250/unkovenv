@@ -13,9 +13,9 @@
 - [ ] `--dry-run` / `--verbose` / `--json` のフラグ受理（サブコマンド横断）
 
 ## 2. ストア解決・初期化
-- [ ] `UNKOENV_STORE` が最優先で store パスに反映される
-- [ ] `UNKOENV_STORE` 未設定時に `UNKOENV_STORE_DIR` が使われる
-- [ ] 両方未設定時に `$HOME/.cache/unkoenv` が使われる
+- [ ] `UNKOVENV_STORE` が最優先で store パスに反映される
+- [ ] `UNKOVENV_STORE` 未設定時に `UNKOVENV_STORE_DIR` が使われる
+- [ ] 両方未設定時に `$HOME/.cache/unkovenv` が使われる
 - [ ] 空文字 store を検知してエラー終了（終了コード 1）
 - [ ] 実行時に `venvs` / `blobs` / `lock` が作成される
 
@@ -90,7 +90,7 @@
 4. ロックと運用耐性（分類 4）
 
 ## 既存テストとの対応メモ
-- 既存 [tests/test_unkoenv.sh](test_unkoenv.sh) で一部カバー済み:
+- 既存 [tests/test_unkovenv.sh](test_unkovenv.sh) で一部カバー済み:
   - 基本重複排除、`gc`、`status --json`、store 上書き、alias conflict、site-packages 未検出
 - 未カバー優先候補:
   - CLI 引数異常、終了コード厳密確認、ロック競合、EXDEV、ハッシュ計算フェールオーバー、`--verbose` ログ粒度

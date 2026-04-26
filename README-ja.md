@@ -12,7 +12,7 @@
 
 既定のストアパス:
 
-- `$HOME/.cache/unkoenv`
+- `$HOME/.cache/unkovenv`
 
 ## 主な機能
 
@@ -50,8 +50,8 @@
 
 環境変数:
 
-- `UNKOENV_STORE`: ストアパス上書き (最優先)
-- `UNKOENV_STORE_DIR`: ストアパス上書き (フォールバック)
+- `UNKOVENV_STORE`: ストアパス上書き (最優先)
+- `UNKOVENV_STORE_DIR`: ストアパス上書き (フォールバック)
 
 ## 終了コード
 
@@ -70,7 +70,7 @@
 ## テスト
 
 ```bash
-./tests/test_unkoenv.sh
+./tests/test_unkovenv.sh
 ```
 
 ## ライセンス

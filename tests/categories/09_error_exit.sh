@@ -7,15 +7,15 @@ run_category_09_error_exit() {
     run_cmd_capture out status "$SCRIPT" add
     assert_eq "1" "$status" "usage error should return 1"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$root/no-venv"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$root/no-venv"
     assert_eq "2" "$status" "missing venv should return 2"
 
     venv="$root/project/venv-a"
     mkvenv_like "$venv" "3.12"
     printf 'data\n' > "$venv/lib/python3.12/site-packages/pkg/a.txt"
     mkdir -p "$store/lock"
-    printf '%s\n' "$$" > "$store/lock/unkoenv.lock"
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv"
+    printf '%s\n' "$$" > "$store/lock/unkovenv.lock"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv"
     assert_eq "3" "$status" "lock conflict should return 3"
     assert_contains "$out" "failed to acquire lock" "lock conflict should report acquisition failure"
   }
@@ -41,7 +41,7 @@ exit 1
 EOF
     chmod +x "$fakebin/ln"
 
-    run_cmd_capture out status env PATH="$fakebin:$PATH" UNKOENV_STORE="$store" "$SCRIPT" add "$venv"
+    run_cmd_capture out status env PATH="$fakebin:$PATH" UNKOVENV_STORE="$store" "$SCRIPT" add "$venv"
     assert_eq "4" "$status" "cross-device link should return 4"
     assert_contains "$out" "cross-device link" "error message should mention cross-device"
   }

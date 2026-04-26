@@ -17,17 +17,17 @@ SAVED_BYTES=0
 LOCK_HELD=0
 
 resolve_store_path() {
-  if [[ -n "${UNKOENV_STORE:-}" ]]; then
-    echo "$UNKOENV_STORE"
+  if [[ -n "${UNKOVENV_STORE:-}" ]]; then
+    echo "$UNKOVENV_STORE"
     return 0
   fi
 
-  if [[ -n "${UNKOENV_STORE_DIR:-}" ]]; then
-    echo "$UNKOENV_STORE_DIR"
+  if [[ -n "${UNKOVENV_STORE_DIR:-}" ]]; then
+    echo "$UNKOVENV_STORE_DIR"
     return 0
   fi
 
-  echo "$HOME/.cache/unkoenv"
+  echo "$HOME/.cache/unkovenv"
 }
 
 init_store() {
@@ -98,13 +98,13 @@ ensure_store_dirs() {
 
 cleanup_lock() {
   if [[ "$LOCK_HELD" -eq 1 ]]; then
-    rm -f "$STORE/lock/unkoenv.lock"
+    rm -f "$STORE/lock/unkovenv.lock"
     LOCK_HELD=0
   fi
 }
 
 acquire_lock() {
-  local lock_file="$STORE/lock/unkoenv.lock"
+  local lock_file="$STORE/lock/unkovenv.lock"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log INFO "dry_run lock path=$lock_file"
     return 0
@@ -524,8 +524,8 @@ Usage:
   $PROG status [--json]
 
 Env:
-  UNKOENV_STORE       override store path (highest priority)
-  UNKOENV_STORE_DIR   override store path (fallback)
+  UNKOVENV_STORE       override store path (highest priority)
+  UNKOVENV_STORE_DIR   override store path (fallback)
   default store: $default_store
 EOF
 }

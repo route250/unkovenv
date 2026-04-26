@@ -14,9 +14,9 @@ run_category_10_gc_status() {
     printf 'same-content\n' > "$f1"
     printf 'same-content\n' > "$f2"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv1"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv1"
     assert_eq "0" "$status" "first add should succeed"
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" add "$venv2"
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" add "$venv2"
     assert_eq "0" "$status" "second add should succeed"
 
     local orphan_hash orphan_path broken_link
@@ -29,7 +29,7 @@ run_category_10_gc_status() {
     broken_link="$store/venvs/broken"
     ln -s "$root/no-target" "$broken_link"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" status --json
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" status --json
     assert_eq "0" "$status" "status --json should succeed"
     assert_contains "$out" '"venv_count":3' "status should count all venv symlinks including broken ones"
     assert_contains "$out" '"broken_link_count":' "status should include broken_link_count field"
@@ -39,12 +39,12 @@ run_category_10_gc_status() {
     [[ "$saved_est" =~ ^[0-9]+$ ]] || fail "estimated_saved_bytes should be a number"
     [[ "$saved_est" -gt 0 ]] || fail "estimated_saved_bytes should be positive"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" gc --dry-run
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" gc --dry-run
     assert_eq "0" "$status" "gc --dry-run should succeed"
     assert_file_exists "$orphan_path"
     [[ -L "$broken_link" ]] || fail "dry-run gc should keep broken link"
 
-    run_cmd_capture out status env UNKOENV_STORE="$store" "$SCRIPT" gc
+    run_cmd_capture out status env UNKOVENV_STORE="$store" "$SCRIPT" gc
     assert_eq "0" "$status" "gc should succeed"
     assert_not_exists "$orphan_path"
     assert_not_exists "$broken_link"
