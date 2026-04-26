@@ -1,6 +1,6 @@
-[日本語版 README](./REAME_ja.md)
+[日本語版 README](./README-ja.md)
 
-![unkovenv overview](./readme.jpg)
+![unkovenv overview](./docs/images/readme.jpg)
 
 # unkovenv
 

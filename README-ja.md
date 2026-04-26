@@ -1,5 +1,7 @@
 [English README](./README.md)
 
+![unkovenv overview ja](./docs/images/readme-ja.jpg)
+
 # unkovenv
 
 複数の Python 仮想環境で重複する `site-packages` 配下のファイルを、共通ストアへのハードリンクに集約してディスク使用量を削減するツールです。
