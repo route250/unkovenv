@@ -1,5 +1,7 @@
 [日本語版 README](./REAME_ja.md)
 
+![unkovenv overview](./readme.jpg)
+
 # unkovenv
 
 Deduplicate duplicated files in Python virtual environments by hard-linking `site-packages` files into a shared content-addressed store.
